@@ -6,9 +6,28 @@ import torchvision.transforms as transforms
 import cv2
 import os
 from torch.utils import data
-import numpy as np
 import torchvision
 import numpy as np
+from pytorch_grad_cam import GradCAM, \
+    HiResCAM, \
+    ScoreCAM, \
+    GradCAMPlusPlus, \
+    AblationCAM, \
+    XGradCAM, \
+    EigenCAM, \
+    EigenGradCAM, \
+    LayerCAM, \
+    FullGrad, \
+    GradCAMElementWise
+
+
+from pytorch_grad_cam import GuidedBackpropReLUModel
+from pytorch_grad_cam.utils.image import show_cam_on_image, \
+    deprocess_image, \
+    preprocess_image
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+
+import datetime
 
 def imageList():
     return os.listdir('./image')
@@ -49,7 +68,7 @@ batch_size= 1
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_classes = 5
 
-model=torchvision.models.resnet18(pretrained=False)
+model= torchvision.models.resnet18(pretrained=False)
 
 def init_model():
     global model
@@ -72,7 +91,6 @@ test_loader=DataLoader(test_data,batch_size=batch_size,shuffle=True)
 def updateDataLoader(imgPath_Array):
     global test_data
     global test_loader
-    print(imgPath_Array)
     test_data.update(imgPath_Array)
     test_loader=DataLoader(test_data,batch_size=batch_size,shuffle=True)
 
@@ -85,11 +103,89 @@ def predict(imgPath):
     for _, (batch_val) in enumerate(test_loader):
         pred_val = model(batch_val.to(device))
         pred_val = torch.softmax(pred_val, 1)
-        print(pred_val)
         list = pred_val.tolist()
         Y_Pred.append(torch.max(pred_val, 1)[1].cpu().numpy())
 
     # Y_Pred = np.hstack(Y_Pred)
     return list[0]
 
+#heatmap part
 
+heatmap_path = './heatmap_image/'
+
+heatmap_method = 'gradcam'
+
+methods = \
+    {"gradcam": GradCAM,
+      "hirescam": HiResCAM,
+      "scorecam": ScoreCAM,
+      "gradcam++": GradCAMPlusPlus,
+      "ablationcam": AblationCAM,
+      "xgradcam": XGradCAM,
+      "eigencam": EigenCAM,
+      "eigengradcam": EigenGradCAM,
+      "layercam": LayerCAM,
+      "fullgrad": FullGrad,
+      "gradcamelementwise": GradCAMElementWise}
+
+heatmap_model = torchvision.models.resnet18(pretrained=False)
+
+def init_heatmap_model():
+  global heatmap_model
+  num_features = heatmap_model.fc.in_features
+  heatmap_model.fc = nn.Linear(num_features, 5)
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+  heatmap_model = heatmap_model.to(device)
+  heatmap_model.load_state_dict(torch.load("Net0.pth", map_location = device))
+  heatmap_model.eval()
+
+init_heatmap_model()
+
+target_layers = [heatmap_model.layer4]
+
+def generate_heatmap_image(image_path):
+    rgb_img = cv2.imread(f'./image/{image_path}', 1)[:, :, ::-1]
+    rgb_img = np.float32(rgb_img) / 255
+    input_tensor = preprocess_image(rgb_img,
+                                  mean=[0.485, 0.456, 0.406],
+                                  std=[0.229, 0.224, 0.225])
+    cam_algorithm = methods[heatmap_method]
+    with cam_algorithm(model = heatmap_model,
+                    target_layers = target_layers,
+                    use_cuda = True) as cam:
+
+    # AblationCAM and ScoreCAM have batched implementations.
+    # You can override the internal batch size for faster computation.
+      cam.batch_size = 32
+      grayscale_cam = cam(input_tensor=input_tensor,
+                          targets=None,
+                          aug_smooth=False,
+                          eigen_smooth=False)
+
+      # Here grayscale_cam has only one image in the batch
+      grayscale_cam = grayscale_cam[0, :]
+
+      cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+      heatmap = cv2.applyColorMap(np.uint8(255 * grayscale_cam), cv2.COLORMAP_JET)
+      heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+      # for i in range(grayscale_cam.shape[0]):
+      #       for j in range(grayscale_cam.shape[1]):
+      #           if grayscale_cam[i, j] < 0.5:
+      #               heatmap[i, j] = [0, 0, 0]
+
+      # for i in range(grayscale_cam.shape[0]):
+      #       for j in range(grayscale_cam.shape[1]):
+      #           if grayscale_cam[i, j] < 0.5:
+      #               heatmap[i, j] = [0, 0, 0]
+
+      #heatmap = [0, 0, 0] if grayscale_cam < 0.5 else heatmap
+      for i in range(3):
+          heatmap[:,:,i] = np.where(grayscale_cam < 0.4, 0, heatmap[:,:,i])
+      heatmap = np.float32(heatmap)
+      name = os.path.splitext(image_path)[0]
+      cv2.imwrite(f'{heatmap_path}/{name}.jpg', heatmap)
+
+      # cam_image is RGB encoded whereas "cv2.imwrite" requires BGR encoding.
+
+      # cam_image = cv2.cvtColor(cam_image, cv2.COLOR_RGB2BGR)
+      # cv2.imwrite(f'{heatmap_method}_cam.jpg', cam_image)
