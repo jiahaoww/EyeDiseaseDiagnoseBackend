@@ -3,6 +3,7 @@ import methods
 import os.path
 from PIL import Image
 from werkzeug.utils import secure_filename
+import urllib.request
 
 image_dir = './image/'
 jpg_dir ='./jpeg_temp/'
@@ -12,42 +13,49 @@ app = Flask(__name__)
 allow_headers = "Origin, Expires, Content-Type, X-E4M-With, Authorization"
 http_response_header = {"Access-Control-Allow-Origin": "*",
                         "Access-Control-Allow-Headers": allow_headers}
-
-@app.route("/images", methods = ['GET', 'OPTIONS'])
-def get_image_list():
-    if request.method == 'GET':
-      list = methods.imageList()
-      return {"code": 200, "data": list}, 200, http_response_header
-    if request.method == 'OPTIONS':
-      return {"str": "ok"}, 202, http_response_header
     
-@app.route("/fetchImage/<imageName>", methods=['GET', 'OPTIONS'])
-def fetch_image_content(imageName):
-   name = os.path.splitext(imageName)[0]
-   ext = os.path.splitext(imageName)[1]
-   file_path = ''
+@app.route("/fetchImage", methods=['GET', 'OPTIONS'])
+def fetch_image_content():
+   imageUrl = request.args['url']
+   filename = secure_filename(imageUrl)
+   path = image_dir + filename
+   if (not os.path.isfile(path)):
+    print('download')
+    # if it is not downloaded yet, download the image at first
+    urllib.request.urlretrieve(imageUrl, path)
+
+   name = os.path.splitext(filename)[0]
+   ext = os.path.splitext(filename)[1]
+
+   # if it is tiff format, it should be transformed to jpg format
+   send_file_path = ''
    if ext == '.tiff' or ext == '.tif':
       jpg_file_path = os.path.join(jpg_dir + name) + '.jpg'
-      if (not os.path.isfile(jpg_file_path)) :
-        im = Image.open(os.path.join(image_dir + imageName))
+      if (not os.path.isfile(jpg_file_path)):
+        print('convert')
+        im = Image.open(path)
         im.thumbnail(im.size)
         im.save(jpg_file_path, "JPEG", quality=100)
-      file_path = jpg_file_path
+      send_file_path = jpg_file_path
    else:
-      file_path = image_dir + imageName
-   return send_file(file_path), 200, http_response_header
+      send_file_path = path
+   return send_file(send_file_path), 200, http_response_header
 
-@app.route("/heatmapImage/<imageName>", methods=['GET', 'OPTIONS'])
-def fetch_heatmap_image_content(imageName): 
-   name = os.path.splitext(imageName)[0]
+@app.route("/heatmapImage", methods=['GET', 'OPTIONS'])
+def fetch_heatmap_image_content(): 
+   imageUrl = request.args['url']
+   filename = secure_filename(imageUrl)
+   name = os.path.splitext(filename)[0]
    heatmap_file_path = methods.heatmap_path + name + '.jpg'
    if (not os.path.isfile(heatmap_file_path)):
-      methods.generate_heatmap_image(imageName)
+      methods.generate_heatmap_image(filename)
    return send_file(heatmap_file_path), 200, http_response_header
 
-@app.route("/predictImage/<imageName>", methods=['GET', 'OPTIONS'])
-def predict_image(imageName):
-   image_path = image_dir + imageName
+@app.route("/predictImage", methods=['GET', 'OPTIONS'])
+def predict_image():
+   imageUrl = request.args['url']
+   filename = secure_filename(imageUrl)
+   image_path = image_dir + filename
    list = methods.predict(image_path)
    return {"list": list, "classes": ['正常', '糖网', '老黄', '静阻', '高度近视']}, 200, http_response_header
 
@@ -55,7 +63,7 @@ def predict_image(imageName):
 def save_predict_result():
    global res_path
    res_file = open(res_path, 'a')
-   print(request.args['imageName'], ' : ', request.args['predict'], file = res_file)
+   print(request.args['patientId'], ' : ', request.args['predict'], file = res_file)
    res_file.close()
    return {"code": 200}, 200, http_response_header
 
