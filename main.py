@@ -3,16 +3,36 @@ import methods
 import os.path
 from PIL import Image
 from werkzeug.utils import secure_filename
-import urllib.request
+import requests
 
 image_dir = './image/'
 jpg_dir ='./jpeg_temp/'
 res_path = './result/res.txt'
+production_mode = True
+HMWebService_URL = 'http://192.168.186.61:9001/HMWebService.asmx/Execute1' if production_mode == True else 'http://127.0.0.1:5000/Execute1'
+# 'http://192.168.186.61:9001/HMWebService.asmx/Execute1'
+print(HMWebService_URL)
 
 app = Flask(__name__)
 allow_headers = "Origin, Expires, Content-Type, X-E4M-With, Authorization"
 http_response_header = {"Access-Control-Allow-Origin": "*",
                         "Access-Control-Allow-Headers": allow_headers}
+
+@app.route("/patientList", methods=['GET', 'OPTIONS'])
+def get_patient_list():
+   paramXml = request.args['xml']
+   payload = {'cmd': 'GetExamPatList', 'strXmlorJson': paramXml}
+   r = requests.get(HMWebService_URL, params = payload)
+   return r.text, 200, http_response_header
+
+
+@app.route("/patientReport", methods=['GET', 'OPTIONS'])
+def get_patient_report_by_id():
+   paramXml = request.args['xml']
+   payload = {'cmd': 'GetPatExamRpt', 'strXmlorJson': paramXml}
+   r = requests.get(HMWebService_URL, params = payload)
+   return r.text, 200, http_response_header
+
     
 @app.route("/fetchImage", methods=['GET', 'OPTIONS'])
 def fetch_image_content():
@@ -22,7 +42,10 @@ def fetch_image_content():
    if (not os.path.isfile(path)):
     print('download')
     # if it is not downloaded yet, download the image at first
-    urllib.request.urlretrieve(imageUrl, path)
+    response = requests.get(imageUrl)
+    if response.status_code == 200:
+       with open(path, 'wb') as f:
+          f.write(response.content)
 
    name = os.path.splitext(filename)[0]
    ext = os.path.splitext(filename)[1]

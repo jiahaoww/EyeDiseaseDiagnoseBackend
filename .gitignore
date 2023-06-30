@@ -1,2 +1,6 @@
 /venv
 /test
+/heatmap_image
+/image
+/jpeg_temp
+/__pycache__
