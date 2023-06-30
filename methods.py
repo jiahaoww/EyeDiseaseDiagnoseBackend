@@ -105,6 +105,7 @@ def predict(imgPath):
         pred_val = torch.softmax(pred_val, 1)
         list = pred_val.tolist()
         Y_Pred.append(torch.max(pred_val, 1)[1].cpu().numpy())
+    torch.cuda.empty_cache()
 
     # Y_Pred = np.hstack(Y_Pred)
     return list[0]
@@ -184,6 +185,8 @@ def generate_heatmap_image(image_path):
       heatmap = np.float32(heatmap)
       name = os.path.splitext(image_path)[0]
       cv2.imwrite(f'{heatmap_path}/{name}.jpg', heatmap)
+      torch.cuda.empty_cache()
+
 
       # cam_image is RGB encoded whereas "cv2.imwrite" requires BGR encoding.
 
