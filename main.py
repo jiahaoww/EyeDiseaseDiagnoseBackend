@@ -18,6 +18,8 @@ allow_headers = "Origin, Expires, Content-Type, X-E4M-With, Authorization"
 http_response_header = {"Access-Control-Allow-Origin": "*",
                         "Access-Control-Allow-Headers": allow_headers}
 
+dr_types = ['NPDR', 'PDR', '正常', '玻璃体出血']
+
 @app.route("/patientList", methods=['GET', 'OPTIONS'])
 def get_patient_list():
    paramXml = request.args['xml']
@@ -100,4 +102,16 @@ def handle_upload_image():
       f.save(f'./uploaded/{name}')
       list = methods.predict(path)
       return {"list": list, "classes": ['正常', '糖网', '老黄', '静阻', '高度近视']}, 200, http_response_header
+   return {"code": 200}, 200, http_response_header
+
+@app.route("/DRType", methods=['POST', 'OPTIONS'])
+def handle_upload_dr_image():
+   if request.method == 'POST':
+      print('POST')
+      f = request.files['image']
+      name = secure_filename(f.filename)
+      path = f'./uploaded/{name}'
+      f.save(f'./uploaded/{name}')
+      res = methods.getDRType(path)
+      return {"DRType": dr_types[res]}, 200, http_response_header
    return {"code": 200}, 200, http_response_header

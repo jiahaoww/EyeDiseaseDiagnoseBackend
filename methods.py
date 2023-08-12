@@ -29,6 +29,10 @@ from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
 import datetime
 
+from DRModel import MyModel_swin_fundus
+from tqdm import tqdm
+from collections import OrderedDict
+
 def imageList():
     return os.listdir('./image')
 
@@ -192,3 +196,69 @@ def generate_heatmap_image(image_path):
 
       # cam_image = cv2.cvtColor(cam_image, cv2.COLOR_RGB2BGR)
       # cv2.imwrite(f'{heatmap_method}_cam.jpg', cam_image)
+
+
+
+# DRType part
+class DRdataset(data.Dataset):
+    def __init__(self,df_data, data_dir = '', transform = None):
+        super().__init__()
+        self.df = df_data
+        self.data_dir = data_dir
+        self.transform = transform
+
+    def update(self, df_data):
+        self.df = df_data
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idex):
+        img_name = self.df[idex]
+        print(self.data_dir, img_name)
+        img_path = os.path.join(self.data_dir, img_name)
+        image = cv2.imread(img_path)
+        image = cv2.resize(image, (224, 224))#256*256
+
+        if self.transform is not None:
+            image = self.transform(image)
+        return image
+    
+dr_images = [[]]
+dr_data= DRdataset(df_data = dr_images, transform=transforms_)
+dr_loader=DataLoader(dr_data, batch_size=batch_size, shuffle=True)
+dr_model = any
+
+DR_NUM_CLASSES = 4
+
+def init_dr_model():
+    global dr_model
+    dr_model = MyModel_swin_fundus(DR_NUM_CLASSES)
+    dr_model = dr_model.to(device)
+    checkpoint = torch.load("tangwang.pth", map_location=torch.device("cuda:0"))
+    
+    prop_selected = OrderedDict()
+    for k, v in checkpoint.items():
+        name = k[7:]  # remove `module.`
+        prop_selected[name] = v
+    dr_model.load_state_dict(prop_selected)
+    dr_model.eval()
+
+def updateDRDataLoader(imgPath_Array):
+    global dr_data
+    global dr_loader
+    dr_data.update(imgPath_Array)
+    dr_loader=DataLoader(dr_data, batch_size=batch_size, shuffle=True)
+
+def getDRType(imgPath): 
+    updateDRDataLoader([imgPath])
+    for image in tqdm(dr_loader):
+        images = image.cuda(non_blocking=True)
+        outputs = dr_model(images)
+        y_pred = []
+        y_pred = y_pred + outputs.argmax(1).tolist()
+        print('y_pred:', y_pred)
+    torch.cuda.empty_cache()
+    return y_pred[0]
+
+init_dr_model()
