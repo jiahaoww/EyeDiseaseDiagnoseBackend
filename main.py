@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file
+from flask import Flask, request, send_file, make_response
 import methods
 import os.path
 from PIL import Image
@@ -15,8 +15,10 @@ print(HMWebService_URL)
 
 app = Flask(__name__)
 allow_headers = "Origin, Expires, Content-Type, X-E4M-With, Authorization"
-http_response_header = {"Access-Control-Allow-Origin": "*",
-                        "Access-Control-Allow-Headers": allow_headers}
+http_response_header = {
+   "Access-Control-Allow-Origin": "*",
+   "Access-Control-Allow-Headers": allow_headers
+}
 
 dr_types = ['NPDR', 'PDR', '正常', '玻璃体出血']
 
@@ -115,3 +117,122 @@ def handle_upload_dr_image():
       res = methods.getDRType(path)
       return {"DRType": dr_types[res]}, 200, http_response_header
    return {"code": 200}, 200, http_response_header
+
+@app.route("/login", methods=['POST', 'OPTIONS'])
+def handle_user_login():
+   userName = request.form['userName']
+   password = request.form['password']
+   file = open("./users/record.txt", "r")
+   lines = file.readlines()
+   account = {}
+   for line in lines:
+      strArr = line.split(':')
+      _userName = strArr[0]
+      _password = strArr[1].rstrip('\n')
+      account[_userName] = _password
+   file.close()
+
+   login_response_header = {
+      "Access-Control-Allow-Headers": allow_headers,
+      "Access-Control-Allow-Credentials": "true"
+   }
+   origin = request.headers.get('Origin')
+   login_response_header['Access-Control-Allow-Origin'] = origin
+
+   if userName in account:
+      if password != account[userName]:
+         return {"code": 208, "msg": "密码错误"}, 208, login_response_header
+   else: 
+      return {"code": 208, "msg": "该用户未注册"}, 208, login_response_header
+
+   resp = make_response({"code": 200, "msg": "登录成功" })
+   resp.set_cookie('CAD_USER', userName, max_age= 24 * 3600 * 365, httponly=True)
+   return resp, 200, login_response_header
+
+@app.route("/logout", methods=['GET', 'OPTIONS'])
+def handle_user_logout():
+   login_response_header = {
+      "Access-Control-Allow-Headers": allow_headers,
+      "Access-Control-Allow-Credentials": "true"
+   }
+   origin = request.headers.get('Origin')
+   login_response_header['Access-Control-Allow-Origin'] = origin
+
+   resp = make_response({"code": 200, "msg": "登出成功" })
+   resp.set_cookie('CAD_USER', '', max_age= 24 * 3600 * 365, httponly=True)
+   return resp, 200, login_response_header
+
+@app.route("/register", methods=['POST', 'OPTIONS'])
+def handle_user_register():
+   userName = request.form['userName']
+   password = request.form['password']
+   file = open("./users/record.txt", "r")
+   lines = file.readlines()
+   account = {}
+   for line in lines:
+      strArr = line.split(':')
+      _userName = strArr[0]
+      _password = strArr[1].rstrip('\n')
+      account[_userName] = _password
+   file.close()
+   if userName in account:
+      return {"code": 208, "msg": "该用户名已被注册过"}, 208, http_response_header
+   file = open("./users/record.txt", "a")
+   file.write(f"{userName}:{password}\n")
+   return {"code": 200, "msg": "注册成功" }, 200, http_response_header
+
+@app.route("/reset", methods=['POST', 'OPTIONS'])
+def handle_user_reset():
+   userName = request.form['userName']
+   password = request.form['password']
+   file = open("./users/record.txt", "r")
+   lines = file.readlines()
+   account = {}
+   for line in lines:
+      strArr = line.split(':')
+      _userName = strArr[0]
+      _password = strArr[1].rstrip('\n')
+      account[_userName] = _password
+   file.close()
+   if not userName in account:
+      return {"code": 208, "msg": "请检查用户名填写是否正确"}, 208, http_response_header
+   account[userName] = password
+   file = open("./users/record.txt", "w")
+   for _userName, _password in account.items():
+      file.write(f"{_userName}:{_password}\n")
+   return {"code": 200, "msg": "重置密码成功" }, 200, http_response_header
+
+@app.route("/modify", methods=['POST', 'OPTIONS'])
+def handle_user_modify():
+   userName = request.form['userName']
+   password = request.form['password']
+   file = open("./users/record.txt", "r")
+   lines = file.readlines()
+   account = {}
+   for line in lines:
+      strArr = line.split(':')
+      _userName = strArr[0]
+      _password = strArr[1].rstrip('\n')
+      account[_userName] = _password
+   file.close()
+   if not userName in account:
+      return {"code": 208, "msg": "请检查用户名填写是否正确"}, 208, http_response_header
+   account[userName] = password
+   file = open("./users/record.txt", "w")
+   for _userName, _password in account.items():
+      file.write(f"{_userName}:{_password}\n")
+   return {"code": 200, "msg": "修改密码成功, 请重新登录" }, 200, http_response_header
+
+@app.route("/checkLogin", methods=['GET', 'OPTIONS'])
+def check_login():
+   login_response_header = {
+      "Access-Control-Allow-Headers": allow_headers,
+      "Access-Control-Allow-Credentials": "true"
+   }
+   origin = request.headers.get('Origin')
+   login_response_header['Access-Control-Allow-Origin'] = origin
+   userName = request.cookies.get('CAD_USER')
+   if userName and len(userName) > 0:
+      return {"code": 200, "msg": "已登录", "userName": userName }, 200, login_response_header
+   else:
+      return {"code": 208, "msg": "未登录" }, 208, login_response_header
