@@ -4,6 +4,7 @@ import os.path
 from PIL import Image
 from werkzeug.utils import secure_filename
 import requests
+from datetime import datetime
 
 image_dir = './image/'
 jpg_dir ='./jpeg_temp/'
@@ -89,10 +90,43 @@ def predict_image():
 @app.route("/savePredictResult", methods=['GET', 'OPTIONS'])
 def save_predict_result():
    global res_path
-   res_file = open(res_path, 'a')
-   print(request.args['patientId'], ' : ', request.args['predict'], file = res_file)
-   res_file.close()
-   return {"code": 200}, 200, http_response_header
+   userName = request.cookies.get('CAD_USER')
+   file = open(res_path, 'a')
+   formatted_time = datetime.now().strftime('%Y-%m-%d %H-%M-%S')
+   file.write(f"{request.args['patientId']}:{request.args['patientName']}:{request.args['predict']}:{userName}:{formatted_time}\n")
+   file.close()
+   login_response_header = {
+      "Access-Control-Allow-Headers": allow_headers,
+      "Access-Control-Allow-Credentials": "true"
+   }
+   origin = request.headers.get('Origin')
+   login_response_header['Access-Control-Allow-Origin'] = origin
+   return {"code": 200}, 200, login_response_header
+
+@app.route("/getPredictResult", methods=['GET', 'OPTIONS'])
+def get_predict_result():
+   global res_path
+   file = open(res_path, 'r')
+   lines = file.readlines()
+   list = []
+   for line in lines:
+      strArr = line.split(':')
+      patientId = strArr[0]
+      patientName = strArr[1]
+      predict = strArr[2]
+      userName = strArr[3]
+      time = strArr[4].rstrip('\n')
+      record = {
+         "patientId": patientId,
+         "patientName": patientName,
+         "predict": predict,
+         "userName": userName,
+         "time": time,
+      }
+      list.append(record)
+   file.close()
+   return {"code": 200, "list": list}, 200, http_response_header
+
 
 @app.route("/upload", methods=['POST', 'OPTIONS'])
 def handle_upload_image():
