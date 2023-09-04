@@ -86,7 +86,7 @@ def init_model():
 # test_data = pd.read_csv('./test_Data.csv').values
 
 images = [
-    ['../image/20210819170737613002.tif']
+    ['../assets/init.tif']
 ]
 test_data= Mydataset(df_data = images,transform=transforms_)
 test_loader=DataLoader(test_data,batch_size=batch_size,shuffle=True)
