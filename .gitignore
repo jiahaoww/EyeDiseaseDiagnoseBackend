@@ -1,7 +1,9 @@
+/__pycache__
 /venv
-/test
 /heatmap_image
 /image
 /jpeg_temp
-/__pycache__
+/result
 /uploaded
+/users
+*.pth
