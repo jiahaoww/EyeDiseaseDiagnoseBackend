@@ -5,14 +5,13 @@ from PIL import Image
 from werkzeug.utils import secure_filename
 import requests
 from datetime import datetime
+import DRModel.DRModelMethods as DRModelMethods
+import multiModel.multiModelMethods as multiModelMethods
 
 image_dir = './image/'
 jpg_dir ='./jpeg_temp/'
 res_path = './result/res.txt'
-production_mode = True
-HMWebService_URL = 'http://192.168.186.61:9001/HMWebService.asmx/Execute1' if production_mode == True else 'http://127.0.0.1:5000/Execute1'
-# 'http://192.168.186.61:9001/HMWebService.asmx/Execute1'
-print(HMWebService_URL)
+HMWebService_URL = 'http://192.168.186.61:9001/HMWebService.asmx/Execute1'
 
 app = Flask(__name__)
 allow_headers = "Origin, Expires, Content-Type, X-E4M-With, Authorization"
@@ -21,7 +20,13 @@ http_response_header = {
    "Access-Control-Allow-Headers": allow_headers
 }
 
+disease_abbr = ['正常', '糖网', '老黄', '静阻', '高度近视']
+
+disease_fullname = ['正常', '糖尿病视网膜病变', '老年性黄斑变性', '视网膜静脉阻塞', '高度近视']
+
 dr_types = ['NPDR', 'PDR', '正常', '玻璃体出血']
+
+multi_types = ['糖网', '老黄', '高度近视', '静阻', '青光眼', '正常']
 
 @app.route("/patientList", methods=['GET', 'OPTIONS'])
 def get_patient_list():
@@ -85,7 +90,7 @@ def predict_image():
    filename = secure_filename(imageUrl)
    image_path = image_dir + filename
    list = methods.predict(image_path)
-   return {"list": list, "classes": ['正常', '糖网', '老黄', '静阻', '高度近视']}, 200, http_response_header
+   return {"list": list, "classes": disease_abbr}, 200, http_response_header
 
 @app.route("/savePredictResult", methods=['GET', 'OPTIONS'])
 def save_predict_result():
@@ -131,25 +136,38 @@ def get_predict_result():
 @app.route("/upload", methods=['POST', 'OPTIONS'])
 def handle_upload_image():
    if request.method == 'POST':
-      print('POST')
       f = request.files['image']
       name = secure_filename(f.filename)
       path = f'./uploaded/{name}'
       f.save(f'./uploaded/{name}')
       list = methods.predict(path)
-      return {"list": list, "classes": ['正常', '糖网', '老黄', '静阻', '高度近视']}, 200, http_response_header
+      return {"list": list, "classes": disease_fullname}, 200, http_response_header
    return {"code": 200}, 200, http_response_header
 
 @app.route("/DRType", methods=['POST', 'OPTIONS'])
 def handle_upload_dr_image():
    if request.method == 'POST':
-      print('POST')
       f = request.files['image']
       name = secure_filename(f.filename)
       path = f'./uploaded/{name}'
       f.save(f'./uploaded/{name}')
       res = methods.getDRType(path)
       return {"DRType": dr_types[res]}, 200, http_response_header
+   return {"code": 200}, 200, http_response_header
+
+@app.route("/multiModel", methods=['POST', 'OPTIONS'])
+def handle_upload_multi_image():
+   if request.method == 'POST':
+      f = request.files['image1']
+      name1 = secure_filename(f.filename)
+      path1 = f'./uploaded/{name1}'
+      f.save(path1)
+      f = request.files['image2']
+      name2 = secure_filename(f.filename)
+      path2 = f'./uploaded/{name2}'
+      f.save(path2)
+      res = multiModelMethods.get_OCT_FUNDUS_Type([path1, path2])
+      return {"type": multi_types[res]}, 200, http_response_header
    return {"code": 200}, 200, http_response_header
 
 @app.route("/login", methods=['POST', 'OPTIONS'])
