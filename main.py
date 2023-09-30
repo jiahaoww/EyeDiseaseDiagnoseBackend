@@ -151,7 +151,7 @@ def handle_upload_dr_image():
       name = secure_filename(f.filename)
       path = f'./uploaded/{name}'
       f.save(f'./uploaded/{name}')
-      res = methods.getDRType(path)
+      res = DRModelMethods.getDRType(path)
       return {"DRType": dr_types[res]}, 200, http_response_header
    return {"code": 200}, 200, http_response_header
 

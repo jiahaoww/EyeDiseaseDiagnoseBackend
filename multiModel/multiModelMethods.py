@@ -84,9 +84,3 @@ def get_OCT_FUNDUS_Type(imgPath):
 
 
 init_model()
-# get_OCT_FUNDUS_Type(['./multi_image/ns_oct.jpg', './multi_image/ns_fundus.jpg'])
-# get_OCT_FUNDUS_Type(['./multi_image/zc_oct.jpg', './multi_image/zc_fundus.jpg'])
-# get_OCT_FUNDUS_Type(['./multi_image/qgy_oct.jpg', './multi_image/qgy_fundus.jpg'])
-# get_OCT_FUNDUS_Type(['./multi_image/jz_oct.jpg', './multi_image/jz_fundus.jpg']), 
-# get_OCT_FUNDUS_Type(['./multi_image/lh_oct.jpg', './multi_image/lh_fundus.jpg'])
-# get_OCT_FUNDUS_Type(['./multi_image/tw_oct.jpg', './multi_image/tw_fundus.jpg'])
