@@ -20,9 +20,9 @@ http_response_header = {
    "Access-Control-Allow-Headers": allow_headers
 }
 
-disease_abbr = ['正常', '糖网', '老黄', '静阻', '高度近视']
+disease_abbr = ['正常', '糖网', '老黄', '青光眼', '静阻', '高度近视']
 
-disease_fullname = ['正常', '糖尿病视网膜病变', '老年性黄斑变性', '视网膜静脉阻塞', '高度近视']
+disease_fullname = ['正常', '糖尿病视网膜病变', '老年性黄斑变性', '青光眼', '视网膜静脉阻塞', '高度近视']
 
 dr_types = ['NPDR', 'PDR', '正常', '玻璃体出血']
 

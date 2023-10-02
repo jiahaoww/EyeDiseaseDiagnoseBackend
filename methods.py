@@ -24,6 +24,10 @@ from pytorch_grad_cam.utils.image import show_cam_on_image, \
     deprocess_image, \
     preprocess_image
 
+from SingleModel.SingleModel import MyModel_single_fundus
+
+from collections import OrderedDict
+
 
 def imageList():
     return os.listdir('./image')
@@ -62,17 +66,21 @@ transforms_ =transforms.Compose([
 batch_size= 1
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-num_classes = 5
+num_classes = 6
 
-model= torchvision.models.resnet18(pretrained=False)
+model = any
 
 def init_model():
     global model
-    num_features=model.fc.in_features
-    model.fc=nn.Linear(num_features,num_classes)
-
+    model = MyModel_single_fundus(num_classes)
     model = model.to(device)
-    model.load_state_dict(torch.load("Net0.pth",map_location=torch.device('cpu')))
+    checkpoint = torch.load("swin_fundus_100.pth", map_location = torch.device("cuda:0"))
+    
+    prop_selected = OrderedDict()
+    for k, v in checkpoint.items():
+        name = k[7:]  # remove `module.`
+        prop_selected[name] = v
+    model.load_state_dict(prop_selected)
     model.eval()
 
 # test_data = pd.read_csv('./test_Data.csv').values
@@ -100,7 +108,6 @@ def predict(imgPath):
         list = pred_val.tolist()
         Y_Pred.append(torch.max(pred_val, 1)[1].cpu().numpy())
     torch.cuda.empty_cache()
-
     # Y_Pred = np.hstack(Y_Pred)
     return list[0]
 
