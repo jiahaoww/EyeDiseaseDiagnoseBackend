@@ -1,1 +1,1 @@
-python -m flask --app main.py run --port=5175
+python -m flask --app main.py run --port=5175 --host=0.0.0.0

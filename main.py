@@ -20,6 +20,14 @@ http_response_header = {
    "Access-Control-Allow-Headers": allow_headers
 }
 
+disease_abbr_5 = ['正常', '糖网', '老黄', '静阻', '高度近视']
+
+disease_fullname_5 = ['正常', '糖尿病视网膜病变', '老年性黄斑变性', '视网膜静脉阻塞', '高度近视']
+
+disease_abbr_2 = ['正常', '老黄']
+
+disease_fullname_2 = ['正常', '老年性黄斑变性']
+
 disease_abbr = ['正常', '糖网', '老黄', '青光眼', '静阻', '高度近视']
 
 disease_fullname = ['正常', '糖尿病视网膜病变', '老年性黄斑变性', '青光眼', '视网膜静脉阻塞', '高度近视']
@@ -27,6 +35,10 @@ disease_fullname = ['正常', '糖尿病视网膜病变', '老年性黄斑变性
 dr_types = ['NPDR', 'PDR', '正常', '玻璃体出血']
 
 multi_types = ['糖网', '老黄', '高度近视', '静阻', '青光眼', '正常']
+
+def get_max_index(a):
+   max_p = max(a)
+   return a.index(max_p)
 
 @app.route("/patientList", methods=['GET', 'OPTIONS'])
 def get_patient_list():
@@ -89,8 +101,58 @@ def predict_image():
    imageUrl = request.args['url']
    filename = secure_filename(imageUrl)
    image_path = image_dir + filename
-   list = methods.predict(image_path)
-   return {"list": list, "classes": disease_abbr}, 200, http_response_header
+   return two_step_predict(image_path, False)
+   
+
+def accuracy(folder, type):
+   for _, _, files in os.walk(folder):
+      f = files
+   #print(f)
+   total = len(f)
+   count = 0
+   for file in f:
+      res = any
+      path = folder + '/' + file
+      # print(path)
+      methods.update_active_model(2)
+      list = methods.predict(path)
+      ans = get_max_index(list)
+      if (ans == 1 or list[ans] < 0.99):
+         methods.update_active_model(1)
+         list = methods.predict(path)
+         index = get_max_index(list)
+         if (index == 1):
+            res = 2
+         else:
+            res = ans
+      else:
+         res = ans
+      if (res == type):
+         count = count + 1
+   print(count, total, type)
+
+accuracy('./test/zhengchang', 0)
+accuracy('./test/tangwang', 1)
+accuracy('./test/lh', 2)
+accuracy('./test/jingzu', 3)
+accuracy('./test/jinshi', 4)
+
+def two_step_predict(path, fullname):
+   methods.update_active_model(2)
+   jyk_list = methods.predict(path)
+   max_i = get_max_index(jyk_list)
+   if (max_i == 1 or jyk_list[max_i] < 0.99):
+      # 是糖网或者置信度 < 0.99
+      methods.update_active_model(1)
+      zp_list = methods.predict(path)
+      index = get_max_index(zp_list)
+      if (index == 1):
+         return {"list": zp_list, "classes": disease_fullname_2 if fullname == True else disease_abbr_2 }, 200, http_response_header
+      else:
+         return {"list": jyk_list, "classes": disease_fullname_5 if fullname == True else disease_abbr_5 }, 200, http_response_header
+   else:
+      return {"list": jyk_list, "classes": disease_fullname_5 if fullname == True else disease_abbr_5 }, 200, http_response_header
+   
 
 @app.route("/savePredictResult", methods=['GET', 'OPTIONS'])
 def save_predict_result():
@@ -139,9 +201,8 @@ def handle_upload_image():
       f = request.files['image']
       name = secure_filename(f.filename)
       path = f'./uploaded/{name}'
-      f.save(f'./uploaded/{name}')
-      list = methods.predict(path)
-      return {"list": list, "classes": disease_fullname}, 200, http_response_header
+      f.save(path)
+      return two_step_predict(path, True)
    return {"code": 200}, 200, http_response_header
 
 @app.route("/DRType", methods=['POST', 'OPTIONS'])

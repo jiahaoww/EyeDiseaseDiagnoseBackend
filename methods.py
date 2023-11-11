@@ -28,6 +28,8 @@ from SingleModel.SingleModel import MyModel_single_fundus
 
 from collections import OrderedDict
 
+from PIL import Image
+
 
 def imageList():
     return os.listdir('./image')
@@ -49,32 +51,79 @@ class Mydataset(data.Dataset):
     def __getitem__(self, idex):
         img_name = self.df[idex]
         img_path = os.path.join(self.data_dir, img_name)
+        image = Image.open(img_path).convert('RGB')
+        if self.transform is not None:
+            image = self.transform(image)
+        return image
+
+
+class jyk_dataset(data.Dataset):
+    def __init__(self,df_data, data_dir = '', transform = None):
+        super().__init__()
+        self.df = df_data
+        self.data_dir = data_dir
+        self.transform = transform
+
+    def update(self, df_data):
+        self.df = df_data
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idex):
+        img_name = self.df[idex]
+        img_path = os.path.join(self.data_dir, img_name)
         image = cv2.imread(img_path)
-        image = cv2.resize(image, (224, 224))#256*256
+        image = cv2.resize(image, (224, 224))
 
         if self.transform is not None:
             image = self.transform(image)
         return image
 
 
-
-transforms_ =transforms.Compose([
+jyk_transforms_ = transforms.Compose([
     transforms.ToPILImage(),
     transforms.ToTensor(),
     transforms.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])])
 
+
+transforms_ =transforms.Compose([
+    transforms.Resize((384,)),
+    transforms.CenterCrop((384, 384)),
+    transforms.ToTensor(),
+])
+
 batch_size= 1
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-num_classes = 6
+
+num_classes = 2
+
+jyk_num_classes = 5
 
 model = any
+
+jyk_model = torchvision.models.resnet18(pretrained=False)
+
+active_model = any
+
+active_dataset = any
+
+def update_active_model(type):
+    global active_model
+    global active_dataset
+    if (type == 1):
+        active_model = model
+        active_dataset = test_data
+    else:
+        active_model = jyk_model
+        active_dataset = jyk_data
 
 def init_model():
     global model
     model = MyModel_single_fundus(num_classes)
     model = model.to(device)
-    checkpoint = torch.load("swin_fundus_100.pth", map_location = torch.device("cuda:0"))
+    checkpoint = torch.load("swin_fundus_700.pth", map_location = torch.device("cuda:0"))
     
     prop_selected = OrderedDict()
     for k, v in checkpoint.items():
@@ -83,27 +132,39 @@ def init_model():
     model.load_state_dict(prop_selected)
     model.eval()
 
+
+def init_jyk_model():
+    global jyk_model
+    num_features = jyk_model.fc.in_features
+    jyk_model.fc = nn.Linear(num_features, jyk_num_classes)
+
+    jyk_model = jyk_model.to(device)
+    jyk_model.load_state_dict(torch.load("Net0.pth", map_location=torch.device("cuda:0")))
+    jyk_model.eval()
+
 # test_data = pd.read_csv('./test_Data.csv').values
 
 images = [[]]
-test_data= Mydataset(df_data = images,transform=transforms_)
-test_loader=DataLoader(test_data,batch_size=batch_size,shuffle=True)
+test_data = Mydataset(df_data = images, transform = transforms_)
+jyk_data = jyk_dataset(df_data = images, transform = jyk_transforms_)
+test_loader = DataLoader(test_data, batch_size = batch_size, shuffle = True)
 
 
 def updateDataLoader(imgPath_Array):
-    global test_data
+    global active_dataset
     global test_loader
-    test_data.update(imgPath_Array)
-    test_loader=DataLoader(test_data,batch_size=batch_size,shuffle=True)
+    active_dataset.update(imgPath_Array)
+    test_loader=DataLoader(active_dataset,batch_size=batch_size,shuffle=True)
 
 init_model()
+init_jyk_model()
 
 def predict(imgPath): 
     updateDataLoader([imgPath])
     Y_Pred = []
     list = []
     for _, (batch_val) in enumerate(test_loader):
-        pred_val = model(batch_val.to(device))
+        pred_val = active_model(batch_val.to(device))
         pred_val = torch.softmax(pred_val, 1)
         list = pred_val.tolist()
         Y_Pred.append(torch.max(pred_val, 1)[1].cpu().numpy())
