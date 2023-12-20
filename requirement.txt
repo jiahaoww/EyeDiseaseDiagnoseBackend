@@ -1,0 +1,10 @@
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch==1.12.1+cu113
+torchaudio==0.12.1+cu113
+torchvision==0.13.1+cu113
+opencv-python==4.8.0.76
+timm==0.3.2
+flask==2.3.2
+grad_cam==1.4.8
+gunicorn==21.2.0
+

@@ -51,7 +51,7 @@ def init_model():
     global model
     model = MyModel_swin_fundus(DR_NUM_CLASSES)
     model = model.to(device)
-    checkpoint = torch.load("tangwang.pth", map_location=torch.device("cuda:0"))
+    checkpoint = torch.load("swin_dr_grading.pth", map_location=torch.device("cuda:0"))
     
     prop_selected = OrderedDict()
     for k, v in checkpoint.items():

@@ -30,13 +30,24 @@ from collections import OrderedDict
 
 from PIL import Image
 
+import torch
+import models_vit
+from pos_embed import interpolate_pos_embed
+from timm.models.layers import trunc_normal_
+from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
-def imageList():
-    return os.listdir('./image')
+import time
 
 
-class Mydataset(data.Dataset):
-    def __init__(self,df_data, data_dir = '', transform = None):
+class fundusModel:
+    def __init__(self, dataset, dataloader, net):
+        self.dataset = dataset
+        self.dataloader = dataloader
+        self.net = net
+
+
+class fundusDataset(data.Dataset):
+    def __init__(self, df_data, data_dir = '', transform = None):
         super().__init__()
         self.df = df_data
         self.data_dir = data_dir
@@ -55,10 +66,10 @@ class Mydataset(data.Dataset):
         if self.transform is not None:
             image = self.transform(image)
         return image
+    
 
-
-class jyk_dataset(data.Dataset):
-    def __init__(self,df_data, data_dir = '', transform = None):
+class SatDataset(data.Dataset):
+    def __init__(self, df_data, data_dir = '', transform = None):
         super().__init__()
         self.df = df_data
         self.data_dir = data_dir
@@ -75,55 +86,81 @@ class jyk_dataset(data.Dataset):
         img_path = os.path.join(self.data_dir, img_name)
         image = cv2.imread(img_path)
         image = cv2.resize(image, (224, 224))
-
         if self.transform is not None:
             image = self.transform(image)
-        return image
+        return image  
+    
+
+def init_mae_model(num_classes, model_path):
+    # df_data
+    images = [[]]
+
+    # transform
+    mean = IMAGENET_DEFAULT_MEAN
+    std = IMAGENET_DEFAULT_STD
+    size = 256
+
+    transform = transforms.Compose([
+        transforms.Resize(size, interpolation = transforms.InterpolationMode.BICUBIC),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std)
+    ])
+
+    # dataset
+    dataset = fundusDataset(df_data = images, transform = transform)
+
+    # dataloader
+    global batch_size
+    dataloader = DataLoader(dataset, batch_size, shuffle = True)
+
+    # net
+
+    model = models_vit.__dict__['vit_large_patch16'](
+        num_classes = num_classes,
+        drop_path_rate = 0.2,
+        global_pool = True,
+    )
+    # load RETFound weights
+    checkpoint = torch.load(model_path, map_location = torch.device(location))
+    checkpoint_model = checkpoint['model']
+    state_dict = model.state_dict()
+    for k in ['head.weight', 'head.bias']:
+       if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
+           print(f"Removing key {k} from pretrained checkpoint")
+           del checkpoint_model[k]
+    #interpolate position embedding
+    interpolate_pos_embed(model, checkpoint_model)
+    model.load_state_dict(checkpoint_model, strict=True)
+    
+    model = model.to(device)
+    model.eval()
+
+    return fundusModel(dataset, dataloader, model)
 
 
-jyk_transforms_ = transforms.Compose([
-    transforms.ToPILImage(),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])])
+def init_swin_model(num_classes):
+    # df_data
+    images = [[]]
 
+    # transform
+    transform = transforms.Compose([
+        transforms.Resize((384,)),
+        transforms.CenterCrop((384, 384)),
+        transforms.ToTensor(),
+    ])
 
-transforms_ =transforms.Compose([
-    transforms.Resize((384,)),
-    transforms.CenterCrop((384, 384)),
-    transforms.ToTensor(),
-])
+    # dataset
+    dataset = fundusDataset(df_data = images, transform = transform)
 
-batch_size= 1
+    # dataloader
+    global batch_size
+    dataloader = DataLoader(dataset, batch_size, shuffle = True)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-num_classes = 2
-
-jyk_num_classes = 5
-
-model = any
-
-jyk_model = torchvision.models.resnet18(pretrained=False)
-
-active_model = any
-
-active_dataset = any
-
-def update_active_model(type):
-    global active_model
-    global active_dataset
-    if (type == 1):
-        active_model = model
-        active_dataset = test_data
-    else:
-        active_model = jyk_model
-        active_dataset = jyk_data
-
-def init_model():
-    global model
+    # net
     model = MyModel_single_fundus(num_classes)
     model = model.to(device)
-    checkpoint = torch.load("swin_fundus_700.pth", map_location = torch.device("cuda:0"))
+    checkpoint = torch.load("swin_nolaohuang_1000.pth", map_location = torch.device("cuda:0"))
     
     prop_selected = OrderedDict()
     for k, v in checkpoint.items():
@@ -131,45 +168,76 @@ def init_model():
         prop_selected[name] = v
     model.load_state_dict(prop_selected)
     model.eval()
+    return fundusModel(dataset, dataloader, model)
+
+def init_sat_model():
+    # df_data
+    images = [[]]
+
+    # transform
+    transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[.5, .5, .5], std=[.5, .5, .5])
+    ])
+
+    # dataset
+    dataset = SatDataset(df_data = images, transform = transform)
+
+    # dataloader
+    global batch_size
+    dataloader = DataLoader(dataset, batch_size, shuffle = True)
+
+    # net
+    num_classes = 5
+    model = torchvision.models.resnet18(pretrained = False)
+    num_features = model.fc.in_features
+    model.fc = nn.Linear(num_features, num_classes)
+    model = model.to(device)
+    
+    model.load_state_dict(torch.load("Net0.pth", map_location = torch.device(location)))
+
+    model.eval()
+
+    return fundusModel(dataset, dataloader, model)
 
 
-def init_jyk_model():
-    global jyk_model
-    num_features = jyk_model.fc.in_features
-    jyk_model.fc = nn.Linear(num_features, jyk_num_classes)
+batch_size = 1
 
-    jyk_model = jyk_model.to(device)
-    jyk_model.load_state_dict(torch.load("Net0.pth", map_location=torch.device("cuda:0")))
-    jyk_model.eval()
+useGPU = True
 
-# test_data = pd.read_csv('./test_Data.csv').values
+#useGPU = False
 
-images = [[]]
-test_data = Mydataset(df_data = images, transform = transforms_)
-jyk_data = jyk_dataset(df_data = images, transform = jyk_transforms_)
-test_loader = DataLoader(test_data, batch_size = batch_size, shuffle = True)
+device = torch.device("cuda" if useGPU == True else "cpu")
+
+location = "cuda:0" if useGPU == True else "cpu"
+
+models = [init_mae_model(2, './checkpoint-best-normal.pth'), init_mae_model(2, './checkpoint-best-8468.pth'), init_mae_model(6, './checkpoint-best-6.pth')]
+#models = [init_swin_model(5), init_mae_model(6, './checkpoint-best-6.pth'), init_sat_model(), init_mae_model(2, './checkpoint-best-8468.pth')]
+
+active_model = models[0]
+
+def update_active_model(index):
+    global active_model
+    active_model = models[index]
 
 
-def updateDataLoader(imgPath_Array):
-    global active_dataset
-    global test_loader
-    active_dataset.update(imgPath_Array)
-    test_loader=DataLoader(active_dataset,batch_size=batch_size,shuffle=True)
+model_exec_count = 0
 
-init_model()
-init_jyk_model()
-
-def predict(imgPath): 
-    updateDataLoader([imgPath])
-    Y_Pred = []
+def predict(imgPath):
+    start = time.time()
+    global model_exec_count 
+    model_exec_count += 1
+    active_model.dataset.update([imgPath])
     list = []
-    for _, (batch_val) in enumerate(test_loader):
-        pred_val = active_model(batch_val.to(device))
+    for _, (batch_val) in enumerate(active_model.dataloader):
+        pred_val = active_model.net(batch_val.to(device))
         pred_val = torch.softmax(pred_val, 1)
         list = pred_val.tolist()
-        Y_Pred.append(torch.max(pred_val, 1)[1].cpu().numpy())
+    
     torch.cuda.empty_cache()
-    # Y_Pred = np.hstack(Y_Pred)
+    end = time.time()
+    print(end - start)
     return list[0]
 
 #heatmap part
@@ -191,31 +259,36 @@ methods = \
       "fullgrad": FullGrad,
       "gradcamelementwise": GradCAMElementWise}
 
-heatmap_model = torchvision.models.resnet18(pretrained=False)
+def reshape_transform(tensor, height=14, width=14):
+    result = tensor[:, 1 :  , :].reshape(tensor.size(0),
+        height, width, tensor.size(2))
 
-def init_heatmap_model():
-  global heatmap_model
-  num_features = heatmap_model.fc.in_features
-  heatmap_model.fc = nn.Linear(num_features, 5)
-  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-  heatmap_model = heatmap_model.to(device)
-  heatmap_model.load_state_dict(torch.load("Net0.pth", map_location = device))
-  heatmap_model.eval()
+    # Bring the channels to the first dimension,
+    # like in CNNs.
+    result = result.transpose(2, 3).transpose(1, 2)
+    return result
 
-init_heatmap_model()
-
-target_layers = [heatmap_model.layer4]
 
 def generate_heatmap_image(image_path):
+
     rgb_img = cv2.imread(f'./image/{image_path}', 1)[:, :, ::-1]
+    width = rgb_img.shape[0]
+    height = rgb_img.shape[1]
+    rgb_img = cv2.resize(rgb_img, (224, 224))
     rgb_img = np.float32(rgb_img) / 255
-    input_tensor = preprocess_image(rgb_img,
-                                  mean=[0.485, 0.456, 0.406],
-                                  std=[0.229, 0.224, 0.225])
+    # input_tensor = preprocess_image(rgb_img,
+    #                               mean=[0.485, 0.456, 0.406],
+    #                               std=[0.229, 0.224, 0.225])
+    input_tensor = preprocess_image(rgb_img, mean=[0.5, 0.5, 0.5],
+                                std=[0.5, 0.5, 0.5])
     cam_algorithm = methods[heatmap_method]
-    with cam_algorithm(model = heatmap_model,
+
+    target_layers = [active_model.net.blocks[-1].norm1]
+
+    with cam_algorithm(model = active_model.net,
                     target_layers = target_layers,
-                    use_cuda = True) as cam:
+                    use_cuda = True,
+                    reshape_transform = reshape_transform) as cam:
 
     # AblationCAM and ScoreCAM have batched implementations.
     # You can override the internal batch size for faster computation.
@@ -228,9 +301,13 @@ def generate_heatmap_image(image_path):
       # Here grayscale_cam has only one image in the batch
       grayscale_cam = grayscale_cam[0, :]
 
-      cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+      cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=False)
+      cam_image = cv2.resize(cam_image, (height, width))
+
       heatmap = cv2.applyColorMap(np.uint8(255 * grayscale_cam), cv2.COLORMAP_JET)
       heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+
+
       # for i in range(grayscale_cam.shape[0]):
       #       for j in range(grayscale_cam.shape[1]):
       #           if grayscale_cam[i, j] < 0.5:
@@ -245,8 +322,9 @@ def generate_heatmap_image(image_path):
       for i in range(3):
           heatmap[:,:,i] = np.where(grayscale_cam < 0.4, 0, heatmap[:,:,i])
       heatmap = np.float32(heatmap)
+      heatmap = cv2.resize(heatmap, (height, width))
       name = os.path.splitext(image_path)[0]
-      cv2.imwrite(f'{heatmap_path}/{name}.jpg', heatmap)
+      cv2.imwrite(f'{heatmap_path}/{name}.jpg', cam_image)
       torch.cuda.empty_cache()
 
 

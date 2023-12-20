@@ -8,6 +8,8 @@ from datetime import datetime
 import DRModel.DRModelMethods as DRModelMethods
 import multiModel.multiModelMethods as multiModelMethods
 
+import time
+
 image_dir = './image/'
 jpg_dir ='./jpeg_temp/'
 res_path = './result/res.txt'
@@ -28,6 +30,10 @@ disease_abbr_2 = ['正常', '老黄']
 
 disease_fullname_2 = ['正常', '老年性黄斑变性']
 
+disease_abbr_6 = ['正常', '糖网', '老黄', '青光眼', '静阻', '高度近视']
+
+disease_fullname_6 = ['正常', '糖尿病视网膜病变', '老年性黄斑变性', '青光眼', '视网膜静脉阻塞', '高度近视']
+
 disease_abbr = ['正常', '糖网', '老黄', '青光眼', '静阻', '高度近视']
 
 disease_fullname = ['正常', '糖尿病视网膜病变', '老年性黄斑变性', '青光眼', '视网膜静脉阻塞', '高度近视']
@@ -36,9 +42,6 @@ dr_types = ['NPDR', 'PDR', '正常', '玻璃体出血']
 
 multi_types = ['糖网', '老黄', '高度近视', '静阻', '青光眼', '正常']
 
-def get_max_index(a):
-   max_p = max(a)
-   return a.index(max_p)
 
 @app.route("/patientList", methods=['GET', 'OPTIONS'])
 def get_patient_list():
@@ -58,6 +61,7 @@ def get_patient_report_by_id():
     
 @app.route("/fetchImage", methods=['GET', 'OPTIONS'])
 def fetch_image_content():
+   print('start download image', time.time())
    imageUrl = request.args['url']
    filename = secure_filename(imageUrl)
    path = image_dir + filename
@@ -84,16 +88,20 @@ def fetch_image_content():
       send_file_path = jpg_file_path
    else:
       send_file_path = path
+
+   print('end download image', time.time())
    return send_file(send_file_path), 200, http_response_header
 
 @app.route("/heatmapImage", methods=['GET', 'OPTIONS'])
 def fetch_heatmap_image_content(): 
+   print('start heatmap image', time.time())
    imageUrl = request.args['url']
    filename = secure_filename(imageUrl)
    name = os.path.splitext(filename)[0]
    heatmap_file_path = methods.heatmap_path + name + '.jpg'
    if (not os.path.isfile(heatmap_file_path)):
       methods.generate_heatmap_image(filename)
+   print('send heatmap image', time.time())
    return send_file(heatmap_file_path), 200, http_response_header
 
 @app.route("/predictImage", methods=['GET', 'OPTIONS'])
@@ -101,41 +109,19 @@ def predict_image():
    imageUrl = request.args['url']
    filename = secure_filename(imageUrl)
    image_path = image_dir + filename
-   return two_step_predict(image_path, False)
+   return one_step_predict(image_path, False)
    
 
-def accuracy(folder, type):
-   for _, _, files in os.walk(folder):
-      f = files
-   #print(f)
-   total = len(f)
-   count = 0
-   for file in f:
-      res = any
-      path = folder + '/' + file
-      # print(path)
-      methods.update_active_model(2)
-      list = methods.predict(path)
-      ans = get_max_index(list)
-      if (ans == 1 or list[ans] < 0.99):
-         methods.update_active_model(1)
-         list = methods.predict(path)
-         index = get_max_index(list)
-         if (index == 1):
-            res = 2
-         else:
-            res = ans
-      else:
-         res = ans
-      if (res == type):
-         count = count + 1
-   print(count, total, type)
+def one_step_predict(path, fullname):
+   methods.update_active_model(2)
+   list = methods.predict(path)
+   return {"list": list, "classes": disease_fullname_6 if fullname == True else disease_abbr_6 }, 200, http_response_header
 
-accuracy('./test/zhengchang', 0)
-accuracy('./test/tangwang', 1)
-accuracy('./test/lh', 2)
-accuracy('./test/jingzu', 3)
-accuracy('./test/jinshi', 4)
+
+def get_max_index(a):
+   max_p = max(a)
+   return a.index(max_p)
+
 
 def two_step_predict(path, fullname):
    methods.update_active_model(2)
@@ -194,7 +180,6 @@ def get_predict_result():
    file.close()
    return {"code": 200, "list": list}, 200, http_response_header
 
-
 @app.route("/upload", methods=['POST', 'OPTIONS'])
 def handle_upload_image():
    if request.method == 'POST':
@@ -202,7 +187,7 @@ def handle_upload_image():
       name = secure_filename(f.filename)
       path = f'./uploaded/{name}'
       f.save(path)
-      return two_step_predict(path, True)
+      return one_step_predict(path, True)
    return {"code": 200}, 200, http_response_header
 
 @app.route("/DRType", methods=['POST', 'OPTIONS'])
@@ -348,4 +333,4 @@ def check_login():
    if userName and len(userName) > 0:
       return {"code": 200, "msg": "已登录", "userName": userName }, 200, login_response_header
    else:
-      return {"code": 208, "msg": "未登录" }, 208, login_response_header
+      return {"code": 200, "msg": "已登录", "userName": userName }, 200, login_response_header
