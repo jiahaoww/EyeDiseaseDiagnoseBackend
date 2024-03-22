@@ -22,21 +22,17 @@ http_response_header = {
    "Access-Control-Allow-Headers": allow_headers
 }
 
-disease_abbr_5 = ['正常', '糖网', '老黄', '静阻', '高度近视']
+disease_abbr_2 = ['正常', '有眼病']
 
-disease_fullname_5 = ['正常', '糖尿病视网膜病变', '老年性黄斑变性', '视网膜静脉阻塞', '高度近视']
+disease_fullname_2 = ['正常',  '有眼病']
 
-disease_abbr_2 = ['正常', '老黄']
+dr_abbr_2 = ['糖网', '其他眼病']
 
-disease_fullname_2 = ['正常', '老年性黄斑变性']
+dr_fullname_2 = ['糖尿病视网膜病变', '其他眼病']
 
 disease_abbr_6 = ['正常', '糖网', '老黄', '青光眼', '静阻', '高度近视']
 
 disease_fullname_6 = ['正常', '糖尿病视网膜病变', '老年性黄斑变性', '青光眼', '视网膜静脉阻塞', '高度近视']
-
-disease_abbr = ['正常', '糖网', '老黄', '青光眼', '静阻', '高度近视']
-
-disease_fullname = ['正常', '糖尿病视网膜病变', '老年性黄斑变性', '青光眼', '视网膜静脉阻塞', '高度近视']
 
 dr_types = ['NPDR', 'PDR', '正常', '玻璃体出血']
 
@@ -61,12 +57,10 @@ def get_patient_report_by_id():
     
 @app.route("/fetchImage", methods=['GET', 'OPTIONS'])
 def fetch_image_content():
-   print('start download image', time.time())
    imageUrl = request.args['url']
    filename = secure_filename(imageUrl)
    path = image_dir + filename
    if (not os.path.isfile(path)):
-    print('download')
     # if it is not downloaded yet, download the image at first
     response = requests.get(imageUrl)
     if response.status_code == 200:
@@ -81,27 +75,22 @@ def fetch_image_content():
    if ext == '.tiff' or ext == '.tif':
       jpg_file_path = os.path.join(jpg_dir + name) + '.jpg'
       if (not os.path.isfile(jpg_file_path)):
-        print('convert')
         im = Image.open(path)
         im.thumbnail(im.size)
         im.save(jpg_file_path, "JPEG", quality=100)
       send_file_path = jpg_file_path
    else:
       send_file_path = path
-
-   print('end download image', time.time())
    return send_file(send_file_path), 200, http_response_header
 
 @app.route("/heatmapImage", methods=['GET', 'OPTIONS'])
 def fetch_heatmap_image_content(): 
-   print('start heatmap image', time.time())
    imageUrl = request.args['url']
    filename = secure_filename(imageUrl)
    name = os.path.splitext(filename)[0]
    heatmap_file_path = methods.heatmap_path + name + '.jpg'
    if (not os.path.isfile(heatmap_file_path)):
       methods.generate_heatmap_image(filename)
-   print('send heatmap image', time.time())
    return send_file(heatmap_file_path), 200, http_response_header
 
 @app.route("/predictImage", methods=['GET', 'OPTIONS'])
@@ -109,36 +98,29 @@ def predict_image():
    imageUrl = request.args['url']
    filename = secure_filename(imageUrl)
    image_path = image_dir + filename
-   return one_step_predict(image_path, False)
+   return three_step_predict(image_path, False)
    
-
-def one_step_predict(path, fullname):
-   methods.update_active_model(2)
-   list = methods.predict(path)
-   return {"list": list, "classes": disease_fullname_6 if fullname == True else disease_abbr_6 }, 200, http_response_header
-
-
 def get_max_index(a):
    max_p = max(a)
    return a.index(max_p)
 
-
-def two_step_predict(path, fullname):
-   methods.update_active_model(2)
-   jyk_list = methods.predict(path)
-   max_i = get_max_index(jyk_list)
-   if (max_i == 1 or jyk_list[max_i] < 0.99):
-      # 是糖网或者置信度 < 0.99
-      methods.update_active_model(1)
-      zp_list = methods.predict(path)
-      index = get_max_index(zp_list)
-      if (index == 1):
-         return {"list": zp_list, "classes": disease_fullname_2 if fullname == True else disease_abbr_2 }, 200, http_response_header
-      else:
-         return {"list": jyk_list, "classes": disease_fullname_5 if fullname == True else disease_abbr_5 }, 200, http_response_header
+def three_step_predict(path, fullname):
+   methods.update_active_model(0)
+   list = methods.predict(path)
+   idx = get_max_index(list)
+   if (idx == 0):
+      # 正常
+      return {"list": list, "classes": disease_fullname_2 if fullname == True else disease_abbr_2 }, 200, http_response_header
    else:
-      return {"list": jyk_list, "classes": disease_fullname_5 if fullname == True else disease_abbr_5 }, 200, http_response_header
-   
+      methods.update_active_model(1)
+      list = methods.predict(path)
+      idx = get_max_index(list)
+      if (idx == 0):
+         return {"list": list, "classes": dr_fullname_2 if fullname == True else dr_abbr_2 }, 200, http_response_header
+      else:
+         methods.update_active_model(2)
+         list = methods.predict(path)
+         return {"list": list, "classes": disease_fullname_6 if fullname == True else disease_abbr_6 }, 200, http_response_header
 
 @app.route("/savePredictResult", methods=['GET', 'OPTIONS'])
 def save_predict_result():
@@ -180,6 +162,22 @@ def get_predict_result():
    file.close()
    return {"code": 200, "list": list}, 200, http_response_header
 
+
+@app.route("/convertTiff", methods=['POST', 'OPTIONS'])
+def handle_convert_tiff():
+   if request.method == 'POST':
+      f = request.files['image']
+      name = secure_filename(f.filename)
+      path = f'./uploaded/{name}'
+      f.save(path)
+      jpg_file_path = os.path.join(jpg_dir + name) + '.jpg'
+      if (not os.path.isfile(jpg_file_path)):
+         im = Image.open(path)
+         im.thumbnail(im.size)
+         im.save(jpg_file_path, "JPEG", quality=100)
+      return send_file(jpg_file_path), 200, http_response_header
+   return {"code": 200}, 200, http_response_header
+
 @app.route("/upload", methods=['POST', 'OPTIONS'])
 def handle_upload_image():
    if request.method == 'POST':
@@ -187,7 +185,7 @@ def handle_upload_image():
       name = secure_filename(f.filename)
       path = f'./uploaded/{name}'
       f.save(path)
-      return one_step_predict(path, True)
+      return three_step_predict(path, True)
    return {"code": 200}, 200, http_response_header
 
 @app.route("/DRType", methods=['POST', 'OPTIONS'])
@@ -333,4 +331,4 @@ def check_login():
    if userName and len(userName) > 0:
       return {"code": 200, "msg": "已登录", "userName": userName }, 200, login_response_header
    else:
-      return {"code": 200, "msg": "已登录", "userName": userName }, 200, login_response_header
+      return {"code": 200, "msg": "未登录" }, 200, login_response_header

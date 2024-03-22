@@ -1,11 +1,9 @@
 import methods
 import os
 import numpy as np
-from sklearn.metrics import roc_auc_score, multilabel_confusion_matrix
+from sklearn.metrics import roc_auc_score, roc_curve, auc,  multilabel_confusion_matrix
 import time
-import GPUtil
 import matplotlib.pyplot as plt
-import threading
 
 def get_max_index(a):
    max_p = max(a)
@@ -18,6 +16,7 @@ incorrect = 0
 
 y_label = []
 y_pred = []
+y_score = []
 
 sensitivity = []
 specificity = []
@@ -30,8 +29,9 @@ kappa = []
 def make_predict_1(path):
    methods.update_active_model(2)
    list = methods.predict(path)
+   score = list[4]
    idx = get_max_index(list)
-   return idx
+   return idx, score
 
 
 # 先按正常、有病2分类，有病的再走后续
@@ -83,9 +83,11 @@ def calculate_one_class(folder, type):
    count = 0
 
    for file in file_list:
-      res = make_predict_3(file)
+      print(file)
+      res, score = make_predict_1(file)
       y_label.append(type)
       y_pred.append(res)
+      y_score.append(score)
       if (res == type):
          count += 1
          correct += 1
@@ -94,18 +96,41 @@ def calculate_one_class(folder, type):
 
 
 def calculate():
-   home_dir = 'D:/fundus_test/'
+   home_dir = 'D:/zp_eyes/jingzu/'
    backup = ['zhengchang', 'tangwang', 'lh_s', 'qingguangyan', 'jingzu', 'jinshi']
-   class_dir_list = backup
-   num_class = 6
-   id = 0
+   class_dir_list = ['静阻', '正常']
+   num_class = 2
+   #id = 0
+   ids = [1, 0]
    start_time = time.time()
-   for class_dir in class_dir_list:
-      dir_path = home_dir + class_dir
+   for idx in range(0, 2):
+      dir_path = home_dir + class_dir_list[idx]
+      id = ids[idx]
       calculate_one_class(dir_path, id)
-      id += 1
+      #id += 1
    end_time = time.time()
    print("elapsed_time: ", end_time - start_time)
+
+   print(y_label, y_score)
+   fpr, tpr, thresholds = roc_curve(y_label, y_score, pos_label=1)
+
+   # 计算AUC值
+   roc_auc = auc(fpr, tpr)
+
+   # 绘制ROC曲线
+   plt.figure()
+   lw = 2
+   plt.plot(fpr, tpr, color='darkorange',
+            lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
+   plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+   plt.xlim([0.0, 1.0])
+   plt.ylim([0.0, 1.05])
+   plt.xlabel('False Positive Rate')
+   plt.ylabel('True Positive Rate')
+   plt.title('Receiver Operating Characteristic Example')
+   plt.legend(loc="lower right")
+   plt.savefig('roc_curve.png', dpi=300)  # 指定文件名和分辨率
+
    confusion_matrix = multilabel_confusion_matrix(np.array(y_label), np.array(y_pred), labels = [i for i in range(num_class)])
    for i in range(1, confusion_matrix.shape[0]):
       mat = confusion_matrix[i]

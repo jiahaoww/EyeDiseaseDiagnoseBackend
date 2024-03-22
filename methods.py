@@ -20,9 +20,7 @@ from pytorch_grad_cam import GradCAM, \
     FullGrad, \
     GradCAMElementWise
 
-from pytorch_grad_cam.utils.image import show_cam_on_image, \
-    deprocess_image, \
-    preprocess_image
+from pytorch_grad_cam.utils.image import show_cam_on_image, preprocess_image
 
 from SingleModel.SingleModel import MyModel_single_fundus
 
@@ -33,10 +31,10 @@ from PIL import Image
 import torch
 import models_vit
 from pos_embed import interpolate_pos_embed
-from timm.models.layers import trunc_normal_
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 import time
+from config import useGPU
 
 
 class fundusModel:
@@ -204,16 +202,11 @@ def init_sat_model():
 
 batch_size = 1
 
-useGPU = True
-
-#useGPU = False
-
 device = torch.device("cuda" if useGPU == True else "cpu")
 
 location = "cuda:0" if useGPU == True else "cpu"
 
-models = [init_mae_model(2, './checkpoint-best-normal.pth'), init_mae_model(2, './checkpoint-best-8468.pth'), init_mae_model(6, './checkpoint-best-6.pth')]
-#models = [init_swin_model(5), init_mae_model(6, './checkpoint-best-6.pth'), init_sat_model(), init_mae_model(2, './checkpoint-best-8468.pth')]
+models = [init_mae_model(2, './checkpoint-best-normal.pth'), init_mae_model(2, './checkpoint-best-dr.pth'), init_mae_model(6, './checkpoint-best-6.pth')]
 
 active_model = models[0]
 
@@ -237,7 +230,6 @@ def predict(imgPath):
     
     torch.cuda.empty_cache()
     end = time.time()
-    print(end - start)
     return list[0]
 
 #heatmap part
@@ -304,31 +296,6 @@ def generate_heatmap_image(image_path):
       cam_image = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=False)
       cam_image = cv2.resize(cam_image, (height, width))
 
-      heatmap = cv2.applyColorMap(np.uint8(255 * grayscale_cam), cv2.COLORMAP_JET)
-      heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-
-
-      # for i in range(grayscale_cam.shape[0]):
-      #       for j in range(grayscale_cam.shape[1]):
-      #           if grayscale_cam[i, j] < 0.5:
-      #               heatmap[i, j] = [0, 0, 0]
-
-      # for i in range(grayscale_cam.shape[0]):
-      #       for j in range(grayscale_cam.shape[1]):
-      #           if grayscale_cam[i, j] < 0.5:
-      #               heatmap[i, j] = [0, 0, 0]
-
-      #heatmap = [0, 0, 0] if grayscale_cam < 0.5 else heatmap
-      for i in range(3):
-          heatmap[:,:,i] = np.where(grayscale_cam < 0.4, 0, heatmap[:,:,i])
-      heatmap = np.float32(heatmap)
-      heatmap = cv2.resize(heatmap, (height, width))
       name = os.path.splitext(image_path)[0]
       cv2.imwrite(f'{heatmap_path}/{name}.jpg', cam_image)
       torch.cuda.empty_cache()
-
-
-      # cam_image is RGB encoded whereas "cv2.imwrite" requires BGR encoding.
-
-      # cam_image = cv2.cvtColor(cam_image, cv2.COLOR_RGB2BGR)
-      # cv2.imwrite(f'{heatmap_method}_cam.jpg', cam_image)

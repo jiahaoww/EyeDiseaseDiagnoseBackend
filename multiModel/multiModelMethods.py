@@ -8,6 +8,7 @@ from torch.utils import data
 from tqdm import tqdm
 from collections import OrderedDict
 from multiModel.multiModel import MyModel_swin_trans
+from config import useGPU
 
 transforms_ =transforms.Compose([
     transforms.ToPILImage(),
@@ -49,13 +50,15 @@ model = any
 
 NUM_CLASSES = 6
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if useGPU else "cpu")
+
+location = "cuda:0" if useGPU == True else "cpu"
 
 def init_model():
     global model
     model = MyModel_swin_trans(NUM_CLASSES)
     model = model.to(device)
-    dict = torch.load("./swin_trans_2000.pth", map_location = torch.device("cuda:0"))
+    dict = torch.load("./swin_trans_2000.pth", map_location = location)
     
     selected = OrderedDict()
     for k, v in dict.items():
@@ -74,9 +77,10 @@ def update_DataLoader(imgPath_Array):
 def get_OCT_FUNDUS_Type(imgPath): 
     update_DataLoader([imgPath])
     for image1, image2 in tqdm(loader):
-        images1 = image1.cuda(non_blocking = True)
-        images2 = image2.cuda(non_blocking = True)
-        outputs = model(images1, images2)
+        if useGPU:
+            image1 = image1.cuda(non_blocking = True)
+            image2 = image2.cuda(non_blocking = True)
+        outputs = model(image1, image2)
         y_pred = []
         y_pred = y_pred + outputs.argmax(1).tolist()
     torch.cuda.empty_cache()

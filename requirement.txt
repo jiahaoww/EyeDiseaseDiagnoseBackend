@@ -7,4 +7,5 @@ timm==0.3.2
 flask==2.3.2
 grad_cam==1.4.8
 gunicorn==21.2.0
+uvicorn[standard]
 

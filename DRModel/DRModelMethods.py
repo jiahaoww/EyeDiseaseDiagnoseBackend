@@ -7,6 +7,7 @@ from torch.utils import data
 from DRModel.DRModel import MyModel_swin_fundus
 from tqdm import tqdm
 from collections import OrderedDict
+from config import useGPU
 
 transforms_ =transforms.Compose([
     transforms.ToPILImage(),
@@ -15,7 +16,9 @@ transforms_ =transforms.Compose([
 
 batch_size= 1
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if useGPU == True else "cpu")
+
+location = "cuda:0" if useGPU == True else "cpu"
 
 class Dataset(data.Dataset):
     def __init__(self,df_data, data_dir = '', transform = None):
@@ -51,7 +54,7 @@ def init_model():
     global model
     model = MyModel_swin_fundus(DR_NUM_CLASSES)
     model = model.to(device)
-    checkpoint = torch.load("swin_dr_grading.pth", map_location=torch.device("cuda:0"))
+    checkpoint = torch.load("swin_dr_grading.pth", map_location = location)
     
     prop_selected = OrderedDict()
     for k, v in checkpoint.items():
@@ -69,7 +72,8 @@ def updateDataLoader(imgPath_Array):
 def getDRType(imgPath): 
     updateDataLoader([imgPath])
     for image in tqdm(loader):
-        image = image.cuda(non_blocking=True)
+        if useGPU:
+            image = image.cuda(non_blocking=True)
         outputs = model(image)
         y_pred = []
         y_pred = y_pred + outputs.argmax(1).tolist()
